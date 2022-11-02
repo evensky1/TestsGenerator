@@ -7,20 +7,19 @@ namespace TestsGenerator.Core.impl;
 
 public class Generator : IGenerator
 {
+    private readonly ConcurrentQueue<MethodDeclarationSyntax> _members = new (new[] { CreateSetUpMethod() });
+    private readonly List<NamespaceDeclarationSyntax> _namespaces = new (new[] { CreateNUnitFrameworkNamespace() });
+    private int _counter = 1;
     public async Task<string> GenerateAsync(string sourceCode)
     {
-        var members = new ConcurrentQueue<MethodDeclarationSyntax>(new[] { CreateSetUpMethod() });
-        var namespaces = new List<NamespaceDeclarationSyntax>(new[] { CreateNUnitFrameworkNamespace() });
-
-        var parsedCode = CSharpSyntaxTree.ParseText(sourceCode);
-
         ClassDeclarationSyntax firstClass = null;
-
+        
+        var parsedCode = CSharpSyntaxTree.ParseText(sourceCode);
         var root = parsedCode.GetCompilationUnitRoot();
 
         foreach (var namespaceDeclaration in root.Members.Cast<NamespaceDeclarationSyntax>())
         {
-            namespaces.Add(namespaceDeclaration);
+            _namespaces.Add(namespaceDeclaration);
 
             foreach (var classDeclaration in namespaceDeclaration.Members.Cast<ClassDeclarationSyntax>())
             {
@@ -28,27 +27,27 @@ public class Generator : IGenerator
                 
                 //TODO: Method overload support
                 
+                var methods = classDeclaration.Members.Cast<MethodDeclarationSyntax>();
+                
                 var parallelOptions = new ParallelOptions() 
                 {
                     MaxDegreeOfParallelism = -1 //unlimited
                 };
-                
-                await Parallel.ForEachAsync(classDeclaration.Members.Cast<MethodDeclarationSyntax>(), parallelOptions,
-                    async (methodDeclaration, _) => members.Enqueue(await CreateTestMethodAsync(methodDeclaration)));
+
+                Parallel.ForEach(methods, parallelOptions, (method, _) => 
+                    _members.Enqueue(CreateTestMethod(method.Identifier.Text)));
             }
         }
-
-        var parsedTestCode =
-            CreateCompilationUnit(firstClass.Identifier.Text, namespaces, members);
-
-        return parsedTestCode.GetText().ToString();
+        
+        return await Task.Run(() => 
+            CreateCompilationUnit(firstClass.Identifier.Text, _namespaces, _members).GetText().ToString());
     }
 
-    private static async Task<MethodDeclarationSyntax> CreateTestMethodAsync(MethodDeclarationSyntax m)
+    private async Task<MethodDeclarationSyntax> CreateTestMethodAsync(MethodDeclarationSyntax m)
     {
         return await Task.Run(() => CreateTestMethod(m.Identifier.Text));
     }
-    private static MethodDeclarationSyntax CreateTestMethod(string sourceName)
+    private MethodDeclarationSyntax CreateTestMethod(string sourceName)
     {
         return SyntaxFactory.MethodDeclaration(
                 SyntaxFactory.PredefinedType(

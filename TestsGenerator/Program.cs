@@ -9,13 +9,13 @@ public static class Program
 {
     public static void Main(string[] args)
     {
-        var paths = new ArrayList();
-        var destPath = "C://tests";
+        var paths = new List<string> {"C:\\Users\\fromt\\RiderProjects\\TestsGenerator\\TestDir\\FirstClass.cs"};
+        var destPath = "C:\\Users\\fromt\\RiderProjects\\TestsGenerator\\TestDir\\Tests";
         
-        var loadCodeFromFile = new TransformBlock<string, string>(path =>
+        var loadCodeFromFile = new TransformBlock<string, string>(async path =>
         {
             using var reader = File.OpenText(path);
-            return reader.ReadToEnd();
+            return await reader.ReadToEndAsync();
         });
 
         var generateTestCode = new TransformBlock<string, string>(srcCode =>
@@ -23,18 +23,28 @@ public static class Program
             var gen = new Generator();
             return gen.GenerateAsync(srcCode);
         });
-
+        
         var saveTestFile = new ActionBlock<string>(async testCode =>
         {
-            await using var writer = File.OpenWrite($"{destPath}/UnitTest1.cs");
-            await writer.WriteAsync(Encoding.ASCII.GetBytes(testCode));
+            await using var writer = File.AppendText($"{destPath}\\UnitTest1.cs");
+            await writer.WriteAsync(testCode);
         });            
         
         var linkOptions = new DataflowLinkOptions { PropagateCompletion = true };
 
         loadCodeFromFile.LinkTo(generateTestCode, linkOptions);
         generateTestCode.LinkTo(saveTestFile, linkOptions);
+
+        var options = new ParallelOptions()
+        {
+            MaxDegreeOfParallelism = -1
+        };
         
-        Parallel.ForEach(new List<string> {"1", "2", "3"}, p => loadCodeFromFile.Post(p));
+        Parallel.ForEach(paths, options, p =>
+        {
+            loadCodeFromFile.Post(p);
+            loadCodeFromFile.Complete();
+            generateTestCode.Completion.Wait();
+        });
     }
 }
