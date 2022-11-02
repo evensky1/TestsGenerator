@@ -3,7 +3,9 @@ using System.Text;
 using System.Threading.Tasks.Dataflow;
 using TestsGenerator.Core.impl;
 
-public class Program
+namespace TestsGenerator;
+
+public static class Program
 {
     public static void Main(string[] args)
     {
