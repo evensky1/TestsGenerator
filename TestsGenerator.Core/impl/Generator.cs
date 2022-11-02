@@ -28,8 +28,13 @@ public class Generator : IGenerator
                 
                 //TODO: Method overload support
                 
-                Parallel.ForEach(classDeclaration.Members.Cast<MethodDeclarationSyntax>(),
-                    methodDeclaration => members.Enqueue(CreateTestMethod(methodDeclaration.Identifier.Text)));
+                var parallelOptions = new ParallelOptions() 
+                {
+                    MaxDegreeOfParallelism = -1 //unlimited
+                };
+                
+                await Parallel.ForEachAsync(classDeclaration.Members.Cast<MethodDeclarationSyntax>(), parallelOptions,
+                    async (methodDeclaration, _) => members.Enqueue(await CreateTestMethodAsync(methodDeclaration)));
             }
         }
 
@@ -43,8 +48,6 @@ public class Generator : IGenerator
     {
         return await Task.Run(() => CreateTestMethod(m.Identifier.Text));
     }
-
-
     private static MethodDeclarationSyntax CreateTestMethod(string sourceName)
     {
         return SyntaxFactory.MethodDeclaration(
