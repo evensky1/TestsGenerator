@@ -1,26 +1,8 @@
-﻿using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Http;
+﻿using System.Collections;
 using System.Text;
 using System.Threading.Tasks.Dataflow;
-using TestsGenerator.Core;
 using TestsGenerator.Core.impl;
 
-public class PipelineContext
-{
-    public string Path { get; set;  }
-    public string DestPath { get; set; }
-    public string Code { get; set; }
-    public string GeneratedTestCode { get; set; }
-
-    public PipelineContext(string path, string destPath)
-    {
-        Path = path;
-        DestPath = destPath;
-    }
-}
 public class Program
 {
     public static void Main(string[] args)
