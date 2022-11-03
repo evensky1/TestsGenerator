@@ -34,8 +34,9 @@ public class Generator : IGenerator
                     MaxDegreeOfParallelism = -1 //unlimited
                 };
 
-                Parallel.ForEach(methods, parallelOptions, (method, _) => 
+                Parallel.ForEach(methods, parallelOptions, method => 
                     _members.Enqueue(CreateTestMethod(method.Identifier.Text)));
+                
             }
         }
         

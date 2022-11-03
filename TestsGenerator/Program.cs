@@ -1,4 +1,5 @@
 ﻿using System.Collections;
+using System.Diagnostics;
 using System.Text;
 using System.Threading.Tasks.Dataflow;
 using TestsGenerator.Core.impl;
@@ -9,42 +10,55 @@ public static class Program
 {
     public static void Main(string[] args)
     {
-        var paths = new List<string> {"C:\\Users\\fromt\\RiderProjects\\TestsGenerator\\TestDir\\FirstClass.cs"};
+        var paths = new List<string> { "C:\\Users\\fromt\\RiderProjects\\TestsGenerator\\TestDir\\FirstClass.cs" };
         var destPath = "C:\\Users\\fromt\\RiderProjects\\TestsGenerator\\TestDir\\Tests";
-        
+
+        //TODO: introduce separate variables for parallel tasks
+
         var loadCodeFromFile = new TransformBlock<string, string>(async path =>
         {
             using var reader = File.OpenText(path);
             return await reader.ReadToEndAsync();
-        });
+        }, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 4 });
 
-        var generateTestCode = new TransformBlock<string, string>(srcCode =>
+        var generateTestCode = new TransformBlock<string, string>(async srcCode =>
         {
             var gen = new Generator();
-            return gen.GenerateAsync(srcCode);
-        });
-        
-        var saveTestFile = new ActionBlock<string>(async testCode =>
+            return await gen.GenerateAsync(srcCode);
+        }, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 4 });
+
+        var buffer = new BufferBlock<string>();
+
+        var saveTestFile = new ActionBlock<string>(testCode =>
         {
-            await using var writer = File.AppendText($"{destPath}\\UnitTest1.cs");
-            await writer.WriteAsync(testCode);
-        });            
-        
+            using var writer = File.AppendText(GenerateTestFilePath(destPath));
+            writer.WriteAsync(testCode);
+        }, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 4 });
+
         var linkOptions = new DataflowLinkOptions { PropagateCompletion = true };
 
         loadCodeFromFile.LinkTo(generateTestCode, linkOptions);
         generateTestCode.LinkTo(saveTestFile, linkOptions);
 
-        var options = new ParallelOptions()
-        {
-            MaxDegreeOfParallelism = -1
-        };
-        
-        Parallel.ForEach(paths, options, p =>
+        foreach (var p in paths)
         {
             loadCodeFromFile.Post(p);
             loadCodeFromFile.Complete();
-            generateTestCode.Completion.Wait();
-        });
+        }
+
+        saveTestFile.Completion.Wait();
+    }
+
+    private static string GenerateTestFilePath(string destPath)
+    {
+        var path = $"{destPath}\\UnitTest.cs";
+        var counter = 1;
+        while (File.Exists(path))
+        {
+            counter++;
+            path = $"{destPath}\\UnitTest{counter}.cs";
+        }
+
+        return path;
     }
 }

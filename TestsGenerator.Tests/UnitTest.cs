@@ -90,7 +90,7 @@ public class Tests
                          }
                      }";
         
-        var str = gen.GenerateAsync(code).Result;
+        var str = gen.GenerateAsync(code);
         Console.WriteLine(str);
         
         Assert.That(true);
