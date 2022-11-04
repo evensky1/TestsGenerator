@@ -24,19 +24,7 @@ public class Generator : IGenerator
             foreach (var classDeclaration in namespaceDeclaration.Members.Cast<ClassDeclarationSyntax>())
             {
                 firstClass ??= classDeclaration;
-                
-                //TODO: Method overload support
-                
-                var methods = classDeclaration.Members.Cast<MethodDeclarationSyntax>();
-                
-                var parallelOptions = new ParallelOptions() 
-                {
-                    MaxDegreeOfParallelism = -1 //unlimited
-                };
-
-                Parallel.ForEach(methods, parallelOptions, method => 
-                    _members.Enqueue(CreateTestMethod(method.Identifier.Text)));
-                
+                ProcessClass(classDeclaration);
             }
         }
         
@@ -44,6 +32,31 @@ public class Generator : IGenerator
             CreateCompilationUnit(firstClass.Identifier.Text, _namespaces, _members).GetText().ToString());
     }
 
+    private void ProcessClass(ClassDeclarationSyntax classDeclaration)
+    {
+        var methods = new List<string>();
+        foreach (var member in classDeclaration.Members)
+        {
+            switch (member)
+            {
+                case MethodDeclarationSyntax method:
+                    var counter = 1;
+                    var methodName = method.Identifier.Text;
+                    while (methods.Find(m => m.Equals(methodName)) != null)
+                        methodName = $"{method.Identifier.Text}{++counter}";
+                    methods.Add(methodName);
+                    break;
+                case ClassDeclarationSyntax clazz:
+                    ProcessClass(clazz);
+                    break;
+            }
+        }
+        
+        var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = -1 };
+        
+        Parallel.ForEach(methods, parallelOptions, methodName => 
+             _members.Enqueue(CreateTestMethod(methodName)));
+    }
     private async Task<MethodDeclarationSyntax> CreateTestMethodAsync(MethodDeclarationSyntax m)
     {
         return await Task.Run(() => CreateTestMethod(m.Identifier.Text));
