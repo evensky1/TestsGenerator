@@ -9,7 +9,7 @@ public class Generator : IGenerator
 {
     private readonly ConcurrentQueue<MethodDeclarationSyntax> _members = new (new[] { CreateSetUpMethod() });
     private readonly List<NamespaceDeclarationSyntax> _namespaces = new (new[] { CreateNUnitFrameworkNamespace() });
-    private int _counter = 1;
+    
     public async Task<string> GenerateAsync(string sourceCode)
     {
         ClassDeclarationSyntax firstClass = null;
@@ -17,12 +17,16 @@ public class Generator : IGenerator
         var parsedCode = CSharpSyntaxTree.ParseText(sourceCode);
         var root = parsedCode.GetCompilationUnitRoot();
 
-        foreach (var namespaceDeclaration in root.Members.Cast<NamespaceDeclarationSyntax>())
+        foreach (var rootMember in root.Members)
         {
+            if (rootMember is not NamespaceDeclarationSyntax namespaceDeclaration) continue;
+            
             _namespaces.Add(namespaceDeclaration);
-
-            foreach (var classDeclaration in namespaceDeclaration.Members.Cast<ClassDeclarationSyntax>())
+            
+            foreach (var cmMember in namespaceDeclaration.Members)
             {
+                if (cmMember is not ClassDeclarationSyntax classDeclaration) continue;
+                
                 firstClass ??= classDeclaration;
                 ProcessClass(classDeclaration);
             }
