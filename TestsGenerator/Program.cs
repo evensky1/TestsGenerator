@@ -5,9 +5,15 @@ namespace TestsGenerator;
 
 public static class Program
 {
+    private static object _sync = new ();
     public static void Main(string[] args)
     {
-        var paths = new List<string> { "C:\\Users\\fromt\\RiderProjects\\TestsGenerator\\TestDir\\FirstClass.cs" };
+        var paths = new List<string>
+        {
+            "C:\\Users\\fromt\\RiderProjects\\TestsGenerator\\TestDir\\FirstClass.cs",
+            "C:\\Users\\fromt\\RiderProjects\\TestsGenerator\\TestDir\\SecondClass.cs"
+        };
+        
         var destPath = "C:\\Users\\fromt\\RiderProjects\\TestsGenerator\\TestDir\\Tests";
 
         //TODO: introduce separate variables for parallel tasks
@@ -23,12 +29,10 @@ public static class Program
             var gen = new Generator();
             return await gen.GenerateAsync(srcCode);
         }, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 4 });
-
-        var buffer = new BufferBlock<string>();
-
+        
         var saveTestFile = new ActionBlock<string>(testCode =>
         {
-            using var writer = File.AppendText(GenerateTestFilePath(destPath));
+            using var writer = GenerateTestFilePath(destPath);
             writer.WriteAsync(testCode);
         }, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 4 });
 
@@ -38,24 +42,24 @@ public static class Program
         generateTestCode.LinkTo(saveTestFile, linkOptions);
 
         foreach (var p in paths)
-        {
             loadCodeFromFile.Post(p);
-            loadCodeFromFile.Complete();
-        }
-
+        
+        loadCodeFromFile.Complete();
         saveTestFile.Completion.Wait();
     }
 
-    private static string GenerateTestFilePath(string destPath)
+    private static StreamWriter GenerateTestFilePath(string destPath)
     {
         var path = $"{destPath}\\UnitTest.cs";
         var counter = 1;
-        while (File.Exists(path))
+        lock (_sync)
         {
-            counter++;
-            path = $"{destPath}\\UnitTest{counter}.cs";
+            while (File.Exists(path))
+            {
+                path = $"{destPath}\\UnitTest{counter}.cs";
+                counter++; 
+            }
+            return File.AppendText(path);    
         }
-
-        return path;
     }
 }
