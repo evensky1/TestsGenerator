@@ -11,30 +11,36 @@ public static class Program
         var paths = new List<string>
         {
             "C:\\Users\\fromt\\RiderProjects\\TestsGenerator\\TestDir\\FirstClass.cs",
-            "C:\\Users\\fromt\\RiderProjects\\TestsGenerator\\TestDir\\SecondClass.cs"
+            "C:\\Users\\fromt\\RiderProjects\\TestsGenerator\\TestDir\\SecondClass.cs",
+            "C:\\Users\\fromt\\RiderProjects\\TestsGenerator\\TestDir\\BrokenClass.cs"
         };
         
         var destPath = "C:\\Users\\fromt\\RiderProjects\\TestsGenerator\\TestDir\\Tests";
 
+        const int loadFilesCountLimit = 4;
+        const int processingFileCountLimit = 4;
+        const int taskCountLimit = 4;
+        const int saveFilesCountLimit = 4;
+        
         //TODO: introduce separate variables for parallel tasks
 
         var loadCodeFromFile = new TransformBlock<string, string>(async path =>
         {
             using var reader = File.OpenText(path);
             return await reader.ReadToEndAsync();
-        }, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 4 });
+        }, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = loadFilesCountLimit });
 
         var generateTestCode = new TransformBlock<string, string>(async srcCode =>
         {
-            var gen = new Generator();
+            var gen = new Generator(taskCountLimit);
             return await gen.GenerateAsync(srcCode);
-        }, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 4 });
+        }, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = processingFileCountLimit });
         
         var saveTestFile = new ActionBlock<string>(testCode =>
         {
-            using var writer = GenerateTestFilePath(destPath);
+            using var writer = GenerateTestFileWriter(destPath);
             writer.WriteAsync(testCode);
-        }, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = 4 });
+        }, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = saveFilesCountLimit });
 
         var linkOptions = new DataflowLinkOptions { PropagateCompletion = true };
 
@@ -48,7 +54,7 @@ public static class Program
         saveTestFile.Completion.Wait();
     }
 
-    private static StreamWriter GenerateTestFilePath(string destPath)
+    private static StreamWriter GenerateTestFileWriter(string destPath)
     {
         var path = $"{destPath}\\UnitTest.cs";
         var counter = 1;

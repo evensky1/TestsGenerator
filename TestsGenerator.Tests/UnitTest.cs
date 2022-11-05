@@ -12,7 +12,7 @@ public class Tests
     [Test]
     public void Test1()
     {
-        var gen = new Generator();
+        var gen = new Generator(12);
         var code = @"using System;
                      using System.Collections;
                      using System.Linq;
