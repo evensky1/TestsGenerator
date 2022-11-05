@@ -7,9 +7,17 @@ namespace TestsGenerator.Core.impl;
 
 public class Generator : IGenerator
 {
-    private readonly ConcurrentQueue<MethodDeclarationSyntax> _members = new (new[] { CreateSetUpMethod() });
-    private readonly List<BaseNamespaceDeclarationSyntax> _namespaces = new (new[] { CreateNUnitFrameworkNamespace() });
-    
+    private readonly ConcurrentQueue<MethodDeclarationSyntax> _members;
+    private readonly List<BaseNamespaceDeclarationSyntax> _namespaces;
+    private readonly Semaphore _semaphore;
+
+    public Generator(int maxTaskCount)
+    {
+        _members = new ConcurrentQueue<MethodDeclarationSyntax>(new[] { ElementFactory.CreateSetUpMethod() });
+        _namespaces = new List<BaseNamespaceDeclarationSyntax>(new[] { ElementFactory.CreateNUnitFrameworkNamespace() });
+        _semaphore = new Semaphore(maxTaskCount, maxTaskCount);
+    }
+
     public async Task<string> GenerateAsync(string sourceCode)
     {
         ClassDeclarationSyntax firstClass = null;
@@ -19,11 +27,9 @@ public class Generator : IGenerator
 
         foreach (var rootMember in root.Members)
         {
-            
             if (rootMember.GetType().BaseType != typeof(BaseNamespaceDeclarationSyntax)) continue;
 
-            var namespaceDeclaration = (BaseNamespaceDeclarationSyntax)rootMember;
-            
+            var namespaceDeclaration = (BaseNamespaceDeclarationSyntax) rootMember;
             _namespaces.Add(namespaceDeclaration);
             
             foreach (var cmMember in namespaceDeclaration.Members)
@@ -34,14 +40,17 @@ public class Generator : IGenerator
                 ProcessClass(classDeclaration);
             }
         }
+
+        if (firstClass == null) return "";
         
         return await Task.Run(() => 
-            CreateCompilationUnit(firstClass.Identifier.Text, _namespaces, _members).GetText().ToString());
+            ElementFactory.CreateCompilationUnit(firstClass.Identifier.Text, _namespaces, _members).GetText().ToString());
     }
 
     private void ProcessClass(ClassDeclarationSyntax classDeclaration)
     {
         var methods = new List<string>();
+            
         foreach (var member in classDeclaration.Members)
         {
             switch (member)
@@ -49,110 +58,23 @@ public class Generator : IGenerator
                 case MethodDeclarationSyntax method:
                     var counter = 1;
                     var methodName = $"{classDeclaration.Identifier.Text}_{method.Identifier.Text}";
+                    
                     while (methods.Find(m => m.Equals(methodName)) != null)
                         methodName = $"{classDeclaration.Identifier.Text}_{method.Identifier.Text}{++counter}";
+                    
                     methods.Add(methodName);
+
+                    Task.Run(() =>
+                    {
+                        _semaphore.WaitOne();
+                        _members.Enqueue(ElementFactory.CreateTestMethod(methodName));
+                        _semaphore.Release();
+                    });
                     break;
                 case ClassDeclarationSyntax clazz:
                     ProcessClass(clazz);
                     break;
             }
         }
-        
-        var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = -1 };
-        
-        Parallel.ForEach(methods, parallelOptions, methodName => 
-             _members.Enqueue(CreateTestMethod(methodName)));
-    }
-    private async Task<MethodDeclarationSyntax> CreateTestMethodAsync(MethodDeclarationSyntax m)
-    {
-        return await Task.Run(() => CreateTestMethod(m.Identifier.Text));
-    }
-    private MethodDeclarationSyntax CreateTestMethod(string sourceName)
-    {
-        return SyntaxFactory.MethodDeclaration(
-                SyntaxFactory.PredefinedType(
-                    SyntaxFactory.Token(SyntaxKind.VoidKeyword)),
-                SyntaxFactory.Identifier($"{sourceName}Test"))
-            .WithAttributeLists(
-                SyntaxFactory.SingletonList(
-                    SyntaxFactory.AttributeList(
-                        SyntaxFactory.SingletonSeparatedList(
-                            SyntaxFactory.Attribute(
-                                SyntaxFactory.IdentifierName("Test"))))))
-            .WithModifiers(
-                SyntaxFactory.TokenList(
-                    SyntaxFactory.Token(SyntaxKind.PublicKeyword)))
-            .WithBody(
-                SyntaxFactory.Block(
-                    SyntaxFactory.SingletonList<StatementSyntax>(
-                        SyntaxFactory.ExpressionStatement(
-                            SyntaxFactory.InvocationExpression(
-                                    SyntaxFactory.MemberAccessExpression(
-                                        SyntaxKind.SimpleMemberAccessExpression,
-                                        SyntaxFactory.IdentifierName("Assert"),
-                                        SyntaxFactory.IdentifierName("Fail")))
-                                .WithArgumentList(
-                                    SyntaxFactory.ArgumentList(
-                                        SyntaxFactory.SingletonSeparatedList<ArgumentSyntax>(
-                                            SyntaxFactory.Argument(
-                                                SyntaxFactory.LiteralExpression(
-                                                    SyntaxKind.StringLiteralExpression,
-                                                    SyntaxFactory.Literal("autogenerated"))))))))));
-    }
-
-    private static MethodDeclarationSyntax CreateSetUpMethod()
-    {
-        return SyntaxFactory.MethodDeclaration(
-                SyntaxFactory.PredefinedType(
-                    SyntaxFactory.Token(SyntaxKind.VoidKeyword)),
-                SyntaxFactory.Identifier("Setup"))
-            .WithAttributeLists(
-                SyntaxFactory.SingletonList(
-                    SyntaxFactory.AttributeList(
-                        SyntaxFactory.SingletonSeparatedList(
-                            SyntaxFactory.Attribute(
-                                SyntaxFactory.IdentifierName("SetUp"))))))
-            .WithModifiers(
-                SyntaxFactory.TokenList(
-                    SyntaxFactory.Token(SyntaxKind.PublicKeyword)))
-            .WithBody(SyntaxFactory.Block());
-    }
-
-    private static NamespaceDeclarationSyntax CreateNUnitFrameworkNamespace()
-    {
-        return SyntaxFactory.NamespaceDeclaration(
-            SyntaxFactory.QualifiedName(
-                SyntaxFactory.IdentifierName("NUnit"),
-                SyntaxFactory.IdentifierName("Framework")));
-    }
-
-    private static IEnumerable<UsingDirectiveSyntax> CreateUsings(IEnumerable<BaseNamespaceDeclarationSyntax> namespaces)
-    {
-        return namespaces.Select(n => SyntaxFactory.UsingDirective(n.Name));
-    }
-
-    private static CompilationUnitSyntax CreateCompilationUnit(
-        string sourceClassName,
-        IEnumerable<BaseNamespaceDeclarationSyntax> namespaces,
-        IEnumerable<MemberDeclarationSyntax> generatedMembers)
-    {
-        return SyntaxFactory.CompilationUnit()
-            .WithUsings(
-                SyntaxFactory.List(CreateUsings(namespaces)))
-            .WithMembers(
-                SyntaxFactory.SingletonList<MemberDeclarationSyntax>(
-                    SyntaxFactory.NamespaceDeclaration(
-                            SyntaxFactory.QualifiedName(SyntaxFactory.IdentifierName(sourceClassName),
-                                SyntaxFactory.IdentifierName("Tests")))
-                        .WithMembers(
-                            SyntaxFactory.SingletonList<MemberDeclarationSyntax>(SyntaxFactory
-                                .ClassDeclaration($"{sourceClassName}Tests")
-                                .WithModifiers(
-                                    SyntaxFactory.TokenList(
-                                        SyntaxFactory.Token(SyntaxKind.PublicKeyword)))
-                                .WithMembers(
-                                    SyntaxFactory.List(generatedMembers))))))
-            .NormalizeWhitespace();
     }
 }
