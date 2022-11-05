@@ -41,9 +41,9 @@ public class Generator : IGenerator
             {
                 case MethodDeclarationSyntax method:
                     var counter = 1;
-                    var methodName = method.Identifier.Text;
+                    var methodName = $"{classDeclaration.Identifier.Text}_{method.Identifier.Text}";
                     while (methods.Find(m => m.Equals(methodName)) != null)
-                        methodName = $"{method.Identifier.Text}{++counter}";
+                        methodName = $"{classDeclaration.Identifier.Text}_{method.Identifier.Text}{++counter}";
                     methods.Add(methodName);
                     break;
                 case ClassDeclarationSyntax clazz:
