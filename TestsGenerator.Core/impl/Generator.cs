@@ -8,7 +8,7 @@ namespace TestsGenerator.Core.impl;
 public class Generator : IGenerator
 {
     private readonly ConcurrentQueue<MethodDeclarationSyntax> _members = new (new[] { CreateSetUpMethod() });
-    private readonly List<NamespaceDeclarationSyntax> _namespaces = new (new[] { CreateNUnitFrameworkNamespace() });
+    private readonly List<BaseNamespaceDeclarationSyntax> _namespaces = new (new[] { CreateNUnitFrameworkNamespace() });
     
     public async Task<string> GenerateAsync(string sourceCode)
     {
@@ -19,7 +19,10 @@ public class Generator : IGenerator
 
         foreach (var rootMember in root.Members)
         {
-            if (rootMember is not NamespaceDeclarationSyntax namespaceDeclaration) continue;
+            
+            if (rootMember.GetType().BaseType != typeof(BaseNamespaceDeclarationSyntax)) continue;
+
+            var namespaceDeclaration = (BaseNamespaceDeclarationSyntax)rootMember;
             
             _namespaces.Add(namespaceDeclaration);
             
@@ -124,14 +127,14 @@ public class Generator : IGenerator
                 SyntaxFactory.IdentifierName("Framework")));
     }
 
-    private static IEnumerable<UsingDirectiveSyntax> CreateUsings(IEnumerable<NamespaceDeclarationSyntax> namespaces)
+    private static IEnumerable<UsingDirectiveSyntax> CreateUsings(IEnumerable<BaseNamespaceDeclarationSyntax> namespaces)
     {
         return namespaces.Select(n => SyntaxFactory.UsingDirective(n.Name));
     }
 
     private static CompilationUnitSyntax CreateCompilationUnit(
         string sourceClassName,
-        IEnumerable<NamespaceDeclarationSyntax> namespaces,
+        IEnumerable<BaseNamespaceDeclarationSyntax> namespaces,
         IEnumerable<MemberDeclarationSyntax> generatedMembers)
     {
         return SyntaxFactory.CompilationUnit()
