@@ -19,7 +19,7 @@ public static class Program
 
         const int loadFilesCountLimit = 4;
         const int processingFileCountLimit = 4;
-        const int taskCountLimit = 4;
+        const int taskCountLimit = 1;
         const int saveFilesCountLimit = 4;
         
         //TODO: introduce separate variables for parallel tasks
