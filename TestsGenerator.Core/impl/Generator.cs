@@ -1,5 +1,4 @@
 ﻿using System.Collections.Concurrent;
-using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -7,14 +6,10 @@ namespace TestsGenerator.Core.impl;
 
 public class Generator : IGenerator
 {
-    private readonly ConcurrentQueue<MethodDeclarationSyntax> _members;
-    private readonly List<BaseNamespaceDeclarationSyntax> _namespaces;
     private readonly Semaphore _semaphore;
 
     public Generator(int maxTaskCount)
     {
-        _members = new ConcurrentQueue<MethodDeclarationSyntax>(new[] { ElementFactory.CreateSetUpMethod() });
-        _namespaces = new List<BaseNamespaceDeclarationSyntax>(new[] { ElementFactory.CreateNUnitFrameworkNamespace() });
         _semaphore = new Semaphore(maxTaskCount, maxTaskCount);
     }
 
@@ -24,32 +19,38 @@ public class Generator : IGenerator
         
         var parsedCode = CSharpSyntaxTree.ParseText(sourceCode);
         var root = parsedCode.GetCompilationUnitRoot();
-
+        var members = new List<MethodDeclarationSyntax>(new[] { ElementFactory.CreateSetUpMethod() });
+        var namespaces = new List<BaseNamespaceDeclarationSyntax>(new[] { ElementFactory.CreateNUnitFrameworkNamespace() });
+        
         foreach (var rootMember in root.Members)
         {
             if (rootMember.GetType().BaseType != typeof(BaseNamespaceDeclarationSyntax)) continue;
 
             var namespaceDeclaration = (BaseNamespaceDeclarationSyntax) rootMember;
-            _namespaces.Add(namespaceDeclaration);
+            namespaces.Add(namespaceDeclaration);
             
             foreach (var cmMember in namespaceDeclaration.Members)
             {
                 if (cmMember is not ClassDeclarationSyntax classDeclaration) continue;
                 
                 firstClass ??= classDeclaration;
-                ProcessClass(classDeclaration);
+
+                _semaphore.WaitOne();
+                var methods = await Task.Run(() => ProcessClass(classDeclaration));
+                _semaphore.Release();
+                members.AddRange(methods);
             }
         }
 
         if (firstClass == null) return "";
         
         return await Task.Run(() => 
-            ElementFactory.CreateCompilationUnit(firstClass.Identifier.Text, _namespaces, _members).GetText().ToString());
+            ElementFactory.CreateCompilationUnit(firstClass.Identifier.Text, namespaces, members).GetText().ToString());
     }
 
-    private void ProcessClass(ClassDeclarationSyntax classDeclaration)
+    private List<MethodDeclarationSyntax> ProcessClass(ClassDeclarationSyntax classDeclaration)
     {
-        var methods = new List<string>();
+        var methods = new List<MethodDeclarationSyntax>();
             
         foreach (var member in classDeclaration.Members)
         {
@@ -59,22 +60,17 @@ public class Generator : IGenerator
                     var counter = 1;
                     var methodName = $"{classDeclaration.Identifier.Text}_{method.Identifier.Text}";
                     
-                    while (methods.Find(m => m.Equals(methodName)) != null)
+                    while (methods.Find(m => m.Identifier.Text.Equals($"{methodName}Test")) != null)
                         methodName = $"{classDeclaration.Identifier.Text}_{method.Identifier.Text}{++counter}";
                     
-                    methods.Add(methodName);
-
-                    Task.Run(() =>
-                    {
-                        _semaphore.WaitOne();
-                        _members.Enqueue(ElementFactory.CreateTestMethod(methodName));
-                        _semaphore.Release();
-                    });
+                    methods.Add(ElementFactory.CreateTestMethod(methodName));
                     break;
                 case ClassDeclarationSyntax clazz:
-                    ProcessClass(clazz);
+                    methods.AddRange(ProcessClass(clazz));
                     break;
             }
         }
+        
+        return methods;
     }
 }

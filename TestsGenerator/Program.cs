@@ -22,8 +22,6 @@ public static class Program
         const int taskCountLimit = 1;
         const int saveFilesCountLimit = 4;
         
-        //TODO: introduce separate variables for parallel tasks
-
         var loadCodeFromFile = new TransformBlock<string, string>(async path =>
         {
             using var reader = File.OpenText(path);
@@ -60,11 +58,8 @@ public static class Program
         var counter = 1;
         lock (_sync)
         {
-            while (File.Exists(path))
-            {
-                path = $"{destPath}\\UnitTest{counter}.cs";
-                counter++; 
-            }
+            while (File.Exists(path)) path = $"{destPath}\\UnitTest{++counter}.cs";
+            
             return File.AppendText(path);    
         }
     }
