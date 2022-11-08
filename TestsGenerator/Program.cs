@@ -13,13 +13,15 @@ public static class Program
             "C:\\Users\\fromt\\RiderProjects\\TestsGenerator\\TestDir\\FirstClass.cs",
             "C:\\Users\\fromt\\RiderProjects\\TestsGenerator\\TestDir\\SecondClass.cs",
             "C:\\Users\\fromt\\RiderProjects\\TestsGenerator\\TestDir\\BrokenClass.cs"
+            //"C:\\Users\\fromt\\RiderProjects\\TestsGenerator\\TestsGenerator.Core\\impl\\ElementFactory.cs"
         };
         
         var destPath = "C:\\Users\\fromt\\RiderProjects\\TestsGenerator\\TestDir\\Tests";
+        //var destPath = "C:\\Users\\fromt\\RiderProjects\\TestsGenerator\\TestsGenerator.Tests";
 
         const int loadFilesCountLimit = 4;
         const int processingFileCountLimit = 4;
-        const int taskCountLimit = 1;
+        const int taskCountLimit = 4;
         const int saveFilesCountLimit = 4;
         
         var loadCodeFromFile = new TransformBlock<string, string>(async path =>
@@ -28,10 +30,10 @@ public static class Program
             return await reader.ReadToEndAsync();
         }, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = loadFilesCountLimit });
 
-        var generateTestCode = new TransformBlock<string, string>(async srcCode =>
+        var generateTestCode = new TransformBlock<string, string>( srcCode =>
         {
             var gen = new Generator(taskCountLimit);
-            return await gen.GenerateAsync(srcCode);
+            return gen.Generate(srcCode);
         }, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = processingFileCountLimit });
         
         var saveTestFile = new ActionBlock<string>(testCode =>

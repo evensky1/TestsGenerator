@@ -1,5 +1,4 @@
-﻿using System.Collections.Concurrent;
-using Microsoft.CodeAnalysis.CSharp;
+﻿using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace TestsGenerator.Core.impl;
@@ -13,7 +12,7 @@ public class Generator : IGenerator
         _semaphore = new Semaphore(maxTaskCount, maxTaskCount);
     }
 
-    public async Task<string> GenerateAsync(string sourceCode)
+    public string Generate(string sourceCode)
     {
         ClassDeclarationSyntax firstClass = null;
         
@@ -35,17 +34,15 @@ public class Generator : IGenerator
                 
                 firstClass ??= classDeclaration;
 
-                _semaphore.WaitOne();
-                var methods = await Task.Run(() => ProcessClass(classDeclaration));
-                _semaphore.Release();
+                var methods = ProcessClass(classDeclaration);
+
                 members.AddRange(methods);
             }
         }
 
         if (firstClass == null) return "";
         
-        return await Task.Run(() => 
-            ElementFactory.CreateCompilationUnit(firstClass.Identifier.Text, namespaces, members).GetText().ToString());
+        return ElementFactory.CreateCompilationUnit(firstClass.Identifier.Text, namespaces, members).GetText().ToString();
     }
 
     private List<MethodDeclarationSyntax> ProcessClass(ClassDeclarationSyntax classDeclaration)
